@@ -89,7 +89,7 @@ Bookstore/
 
 ## Recomendaciones
 
-1. **Optimizar el manejo de datos comprimidos**: Considera implementar un buffer o una estructura que gestione los datos comprimidos de manera más eficiente durante la búsqueda.
+1. **Optimizar el manejo de datos comprimidos**: implementar una estructura que gestione los datos comprimidos de manera más eficiente durante la búsqueda.
    
 2. **Implementar pruebas unitarias**: Desarrollar pruebas unitarias para cubrir los diferentes casos de compresión y descompresión.
    
