@@ -287,7 +287,6 @@ class BTree {
 
             String oldName = originalBook.getString("name");
 
-            // Update the book in the B-tree node.
             boolean updated = root.updateBook(isbn, updateData);
 
             if (updated) {
@@ -297,13 +296,11 @@ class BTree {
                     String newName = updatedBook.getString("name");
 
 
-                    // If the name has changed, update the bookIndexByName map.
                     if (!oldName.equals(newName)) {
-                        bookIndexByName.remove(oldName); // Remove old name
-                        bookIndexByName.put(newName, updatedBook); // Insert new name
+                        bookIndexByName.remove(oldName);
+                        bookIndexByName.put(newName, updatedBook);
                     }
 
-                    // Ensure that the bookIndexByIsbn map is still accurate.
                     bookIndexByIsbn.put(isbn, updatedBook);
 
                     return true;
@@ -321,7 +318,6 @@ class BTree {
             if (bookToRemove != null) {
                 String name = bookToRemove.getString("name");
 
-                // Remove the book from both indexes.
                 bookIndexByName.remove(name);
                 bookIndexByIsbn.remove(isbn);
             }
