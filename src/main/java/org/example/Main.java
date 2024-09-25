@@ -398,46 +398,6 @@ class Huffman {
     }
 }
 
-class BitWriter {
-    private int buffer;
-    private int bitCount;
-    private List<Byte> stream;
-
-    public BitWriter() {
-        this.buffer = 0;
-        this.bitCount = 0;
-        this.stream = new ArrayList<>();
-    }
-
-    public void writeBit(boolean bit) {
-        buffer <<= 1;
-        if (bit) buffer |= 1;
-        bitCount++;
-
-        if (bitCount == 8) {
-            stream.add((byte) buffer);
-            bitCount = 0;
-            buffer = 0;
-        }
-    }
-
-    public List<Byte> flush() {
-        if (bitCount > 0) {
-            buffer <<= (8 - bitCount);
-            stream.add((byte) buffer);
-        }
-        return stream;
-    }
-
-    public static String getBinaryStringFromMemoryStream(List<Byte> stream) {
-        StringBuilder binaryStream = new StringBuilder();
-        for (byte b : stream) {
-            binaryStream.append(String.format("%8s", Integer.toBinaryString(b & 0xFF)).replace(' ', '0'));
-        }
-        return binaryStream.toString();
-    }
-}
-
 class arithmetic {
 
     static class Interval {
@@ -450,7 +410,6 @@ class arithmetic {
         }
     }
 
-    // Método para calcular las frecuencias de los símbolos
     public static Map<Character, Integer> frequency(String name) {
         Map<Character, Integer> freqMap = new HashMap<>();
         for (char c : name.toCharArray()) {
@@ -459,7 +418,6 @@ class arithmetic {
         return freqMap;
     }
 
-    // Método para calcular las probabilidades de los símbolos
     public static Map<Character, Double> probabilidad(Map<Character, Integer> freqMap, int totalChar) {
         Map<Character, Double> probMap = new HashMap<>();
         for (Map.Entry<Character, Integer> entry : freqMap.entrySet()) {
@@ -468,7 +426,6 @@ class arithmetic {
         return probMap;
     }
 
-    // Método para crear los intervalos de los símbolos basado en las probabilidades
     public static Map<Character, Interval> interval(Map<Character, Double> probMap) {
         Map<Character, Interval> intervalMap = new HashMap<>();
         double cumulative = 0.0;
@@ -485,49 +442,33 @@ class arithmetic {
         return intervalMap;
     }
 
-    // Método para comprimir una secuencia usando compresión aritmética
-    public static List<Byte> compress(String name, Map<Character, Interval> intervalMap) {
+    public static double compress(String name, Map<Character, Interval> intervalMap) {
         double low = 0.0;
         double high = 1.0;
-        double range;
-
-        BitWriter bitWriter = new BitWriter();
 
         for (char symbol : name.toCharArray()) {
             Interval interval = intervalMap.get(symbol);
 
-            range = high - low;
+            double range = high - low;
             high = low + range * interval.high;
             low = low + range * interval.low;
-
-            while (true) {
-                if ((high < 0.5 && low < 0.5) || (high >= 0.5 && low >= 0.5)) {
-                    boolean bit = high >= 0.5;
-                    bitWriter.writeBit(bit);
-
-                    while (bitWriter.flush().size() > 0) {
-                        bitWriter.writeBit(!bit);
-                    }
-
-                    if (bit) {
-                        low = (low - 0.5) * 2;
-                        high = (high - 0.5) * 2;
-                    } else {
-                        low *= 2;
-                        high *= 2;
-                    }
-                } else {
-                    break;
-                }
-            }
         }
 
-        return bitWriter.flush();
+        return (low + high) / 2;
     }
 
-    // Método para calcular el tamaño comprimido en bytes
-    public static double getCompressedSizeInBytes(List<Byte> compressedData) {
-        return compressedData.size();
+    public static double getCompressedSizeInBytes(String name, Map<Character, Double> probMap) {
+        double compressedBits = 0.0;
+
+        for (char ch : name.toCharArray()) {
+            double probability = probMap.get(ch);
+            double logValue = -Math.log(probability) / Math.log(2);
+            compressedBits += logValue;
+        }
+
+        double compressedSizeInBytes = Math.ceil(compressedBits / 8.0);
+
+        return compressedSizeInBytes;
     }
 }
 
@@ -632,16 +573,18 @@ public class Main {
         arithmetic arith = new arithmetic();
 
         Map<Character, Integer> freqMap = arith.frequency(name);
+
         Map<Character, Double> probMap = arith.probabilidad(freqMap, name.length());
+
         Map<Character, arithmetic.Interval> intervalMap = arith.interval(probMap);
 
-        List<Byte> compressedData = arith.compress(name, intervalMap);
+        double compress = arith.compress(name, intervalMap);
 
-        double compressedSizeInBytes = arith.getCompressedSizeInBytes(compressedData);
+        double compressedSizeInBytes = arith.getCompressedSizeInBytes(name, probMap);
 
         return (int) compressedSizeInBytes;
     }
-    
+
     public static int Equal(int namesize, int sizeHuffman, int sizeArith){
         int newsizeHuff = sizeHuffman/8;
         if(namesize == newsizeHuff && namesize == sizeArith){
@@ -744,8 +687,8 @@ public class Main {
     }
 
     public static void main(String[] args) {
-        String file = "100Klab01_books.csv";
-        String file2 = "100Klab01_search.csv";
+        String file = "Ejemplo_lab01_books.csv";
+        String file2 = "Ejemplo_lab01_search.csv";
         BTree tree = new BTree();
         // Insertador, actualizando y eliminando libros en el arbol
         ReaderCSV(file, tree);
