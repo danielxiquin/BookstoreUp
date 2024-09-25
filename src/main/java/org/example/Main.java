@@ -26,13 +26,11 @@ class BTreeNode {
 
 
         if (this.isLeaf) {
-            // Insert book into leaf node
             while (i >= 0 && this.books.get(i).getString("isbn").compareTo(isbn) > 0) {
                 i--;
             }
             this.books.add(i + 1, book);
         } else {
-            // Insert book into non-leaf node
             while (i >= 0 && this.books.get(i).getString("isbn").compareTo(isbn) > 0) {
                 i--;
             }
@@ -50,16 +48,16 @@ class BTreeNode {
     public void splitChild(int i, BTreeNode y) {
         BTreeNode z = new BTreeNode(y.isLeaf);
 
-        z.books.addAll(y.books.subList(2, y.books.size()));  // Move last half of the books
-        y.books.subList(2, y.books.size()).clear();  // Remove moved books from original node
+        z.books.addAll(y.books.subList(2, y.books.size()));
+        y.books.subList(2, y.books.size()).clear();
 
         if (!y.isLeaf) {
-            z.children.addAll(y.children.subList(2, y.children.size()));  // Move children if internal node
-            y.children.subList(2, y.children.size()).clear();  // Remove moved children from original node
+            z.children.addAll(y.children.subList(2, y.children.size()));
+            y.children.subList(2, y.children.size()).clear();
         }
 
-        this.children.add(i + 1, z);  // Link new node to current node
-        this.books.add(i, y.books.remove(1));  // Move middle book up to the parent node
+        this.children.add(i + 1, z);
+        this.books.add(i, y.books.remove(1));
 
     }
 
@@ -68,14 +66,13 @@ class BTreeNode {
         for (int idx = 0; idx < books.size(); idx++) {
             String currentIsbn = books.get(idx).getString("isbn");
             if (currentIsbn.equals(isbn)) {
-                return idx;  // Return the index if the ISBN matches
+                return idx;
             }
-            // If the current ISBN is greater than the one we're searching for, return this index for traversal
             if (currentIsbn.compareTo(isbn) > 0) {
                 return idx;
             }
         }
-        return books.size();  // If not found, return size to continue traversal
+        return books.size();
     }
 
 
@@ -83,7 +80,6 @@ class BTreeNode {
         int idx = findKey(isbn);
 
 
-        // Check if the book with the given ISBN is present in the current node
         if (idx < books.size() && books.get(idx).getString("isbn").equals(isbn)) {
             JSONObject book = books.get(idx);
 
@@ -97,7 +93,6 @@ class BTreeNode {
             return true;
         }
 
-        // If not found in current node and it's not a leaf node, search in children
         if (!isLeaf) {
 
             if (idx < books.size() && isbn.compareTo(books.get(idx).getString("isbn")) > 0) {
