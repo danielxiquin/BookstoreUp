@@ -1,4 +1,5 @@
 package org.example;
+
 import org.json.JSONObject;
 import java.util.HashMap;
 import java.io.*;
@@ -7,34 +8,38 @@ import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
 
-class BTreeNode{
+class BTreeNode {
     List<JSONObject> books;
     List<BTreeNode> children;
     boolean isLeaf;
 
-    public BTreeNode(boolean isLeaf){
+    public BTreeNode(boolean isLeaf) {
         this.books = new ArrayList<>();
         this.children = new ArrayList<>();
         this.isLeaf = isLeaf;
     }
 
-    //Metodo de incertar
+    // Metodo de incertar
     public void insertNonFull(JSONObject book) {
+        String isbn = book.getString("isbn");
         int i = this.books.size() - 1;
 
+
         if (this.isLeaf) {
-            while (i >= 0 && this.books.get(i).getString("isbn").compareTo(book.getString("isbn")) > 0) {
+            // Insert book into leaf node
+            while (i >= 0 && this.books.get(i).getString("isbn").compareTo(isbn) > 0) {
                 i--;
             }
             this.books.add(i + 1, book);
         } else {
-            while (i >= 0 && this.books.get(i).getString("isbn").compareTo(book.getString("isbn")) > 0) {
+            // Insert book into non-leaf node
+            while (i >= 0 && this.books.get(i).getString("isbn").compareTo(isbn) > 0) {
                 i--;
             }
 
             if (this.children.get(i + 1).books.size() == 4) {
                 this.splitChild(i + 1, this.children.get(i + 1));
-                if (this.books.get(i + 1).getString("isbn").compareTo(book.getString("isbn")) < 0) {
+                if (this.books.get(i + 1).getString("isbn").compareTo(isbn) < 0) {
                     i++;
                 }
             }
@@ -44,34 +49,45 @@ class BTreeNode{
 
     public void splitChild(int i, BTreeNode y) {
         BTreeNode z = new BTreeNode(y.isLeaf);
-        z.books.addAll(y.books.subList(2, y.books.size()));
-        y.books.subList(2, y.books.size()).clear();
+
+        z.books.addAll(y.books.subList(2, y.books.size()));  // Move last half of the books
+        y.books.subList(2, y.books.size()).clear();  // Remove moved books from original node
 
         if (!y.isLeaf) {
-            z.children.addAll(y.children.subList(2, y.children.size()));
-            y.children.subList(2, y.children.size()).clear();
+            z.children.addAll(y.children.subList(2, y.children.size()));  // Move children if internal node
+            y.children.subList(2, y.children.size()).clear();  // Remove moved children from original node
         }
 
-        this.children.add(i + 1, z);
-        this.books.add(i, y.books.remove(1));
+        this.children.add(i + 1, z);  // Link new node to current node
+        this.books.add(i, y.books.remove(1));  // Move middle book up to the parent node
+
     }
 
-    //Metodo de actualización
-    public int findkey(String isbn){
-        for(int idx = 0; idx < books.size(); idx++){
-            if(books.get(idx) != null && books.get(idx).getString("isbn").compareTo(isbn)== 0)     {
+
+    public int findKey(String isbn) {
+        for (int idx = 0; idx < books.size(); idx++) {
+            String currentIsbn = books.get(idx).getString("isbn");
+            if (currentIsbn.equals(isbn)) {
+                return idx;  // Return the index if the ISBN matches
+            }
+            // If the current ISBN is greater than the one we're searching for, return this index for traversal
+            if (currentIsbn.compareTo(isbn) > 0) {
                 return idx;
             }
         }
-        return books.size();
+        return books.size();  // If not found, return size to continue traversal
     }
 
-    public boolean updateBook(String isbn, Map<String, Object> updateData) {
-        int idx = findkey(isbn);
 
-        if (idx < books.size()) {
+    public boolean updateBook(String isbn, Map<String, Object> updateData) {
+        int idx = findKey(isbn);
+
+
+        // Check if the book with the given ISBN is present in the current node
+        if (idx < books.size() && books.get(idx).getString("isbn").equals(isbn)) {
             JSONObject book = books.get(idx);
 
+            // Update each field in the book
             for (Map.Entry<String, Object> entry : updateData.entrySet()) {
                 String key = entry.getKey();
                 Object value = entry.getValue();
@@ -81,7 +97,12 @@ class BTreeNode{
             return true;
         }
 
+        // If not found in current node and it's not a leaf node, search in children
         if (!isLeaf) {
+
+            if (idx < books.size() && isbn.compareTo(books.get(idx).getString("isbn")) > 0) {
+                idx++;
+            }
 
             if (idx < children.size()) {
                 return children.get(idx).updateBook(isbn, updateData);
@@ -92,34 +113,31 @@ class BTreeNode{
     }
 
 
-    //Metodo de eliminacion
-    public void removeBook(String isbn){
+    public void removeBook(String isbn) {
+        int idx = findKey(isbn);
 
-        int idx = findkey(isbn);
-
-        if(idx < books.size() && books.get(idx).getString("isbn").compareTo(isbn) == 0){
-            if(isLeaf){
-                books.remove((idx));
-            }else{
+        if (idx < books.size() && books.get(idx).getString("isbn").compareTo(isbn) == 0) {
+            if (isLeaf) {
+                books.remove(idx);
+            } else {
                 removeFromNonLeaf(idx);
             }
-        }else{
-            if(isLeaf){
+        } else {
+            if (isLeaf) {
                 return;
             }
 
             boolean flag = (idx == books.size());
 
-            if(children.get(idx).books.size() < 2){
+            if (children.get(idx).books.size() < 2) {
                 fill(idx);
             }
 
-            if(flag && idx > books.size()){
-                children.get(idx-1).removeBook(isbn);
-            }else{
+            if (flag && idx > books.size()) {
+                children.get(idx - 1).removeBook(isbn);
+            } else {
                 children.get(idx).removeBook(isbn);
             }
-
         }
     }
 
@@ -144,8 +162,7 @@ class BTreeNode{
             JSONObject pred = getPredecessor(idx);
             books.set(idx, pred);
             children.get(idx).removeBook(pred.getString("isbn"));
-        }
-        else if (children.get(idx + 1).books.size() >= 2) {
+        } else if (children.get(idx + 1).books.size() >= 2) {
             JSONObject succ = getSuccessor(idx);
             books.set(idx, succ);
             children.get(idx + 1).removeBook(succ.getString("isbn"));
@@ -214,7 +231,6 @@ class BTreeNode{
         return current.books.get(0);
     }
 
-
 }
 
 class BTree {
@@ -233,6 +249,7 @@ class BTree {
     public void insert(JSONObject book) {
         String name = book.getString("name");
         String isbn = book.getString("isbn");
+
 
         if (bookIndexByName.containsKey(name)) {
             return;
@@ -257,9 +274,11 @@ class BTree {
             }
             root.insertNonFull(book);
         }
+
     }
 
     public boolean updateBook(String isbn, Map<String, Object> updateData) {
+
         if (root != null) {
             JSONObject originalBook = findBookByIsbn(isbn);
             if (originalBook == null) {
@@ -268,6 +287,7 @@ class BTree {
 
             String oldName = originalBook.getString("name");
 
+            // Update the book in the B-tree node.
             boolean updated = root.updateBook(isbn, updateData);
 
             if (updated) {
@@ -276,18 +296,23 @@ class BTree {
                 if (updatedBook != null) {
                     String newName = updatedBook.getString("name");
 
+
+                    // If the name has changed, update the bookIndexByName map.
                     if (!oldName.equals(newName)) {
-                        bookIndexByName.remove(oldName);
-                        bookIndexByName.put(newName, updatedBook);
+                        bookIndexByName.remove(oldName); // Remove old name
+                        bookIndexByName.put(newName, updatedBook); // Insert new name
                     }
+
+                    // Ensure that the bookIndexByIsbn map is still accurate.
+                    bookIndexByIsbn.put(isbn, updatedBook);
 
                     return true;
                 }
             }
         }
+
         return false;
     }
-
 
     public void removeBook(String isbn) {
         if (root != null) {
@@ -296,6 +321,7 @@ class BTree {
             if (bookToRemove != null) {
                 String name = bookToRemove.getString("name");
 
+                // Remove the book from both indexes.
                 bookIndexByName.remove(name);
                 bookIndexByIsbn.remove(isbn);
             }
@@ -320,27 +346,26 @@ class BTree {
     }
 }
 
-
 class HuffmanNode implements Comparable<HuffmanNode> {
     char character;
     int frequency;
     HuffmanNode left;
     HuffmanNode right;
 
-    public HuffmanNode(char character, int frequency){
+    public HuffmanNode(char character, int frequency) {
         this.character = character;
         this.frequency = frequency;
         this.left = null;
         this.right = null;
     }
 
-    public int compareTo(HuffmanNode other){
-        return this.frequency -  other.frequency;
+    public int compareTo(HuffmanNode other) {
+        return this.frequency - other.frequency;
     }
 }
 
-class Huffman{
-    public static HuffmanNode buildHuffmanTree(Map<Character, Integer> frequency){
+class Huffman {
+    public static HuffmanNode buildHuffmanTree(Map<Character, Integer> frequency) {
         PriorityQueue<HuffmanNode> pq = new PriorityQueue<>();
 
         for (Map.Entry<Character, Integer> entry : frequency.entrySet()) {
@@ -361,7 +386,8 @@ class Huffman{
     }
 
     public static void generateCodes(HuffmanNode root, String code, Map<Character, String> huffmanCode) {
-        if (root == null) return;
+        if (root == null)
+            return;
 
         if (root.left == null && root.right == null) {
             huffmanCode.put(root.character, code);
@@ -369,6 +395,46 @@ class Huffman{
 
         generateCodes(root.left, code + "0", huffmanCode);
         generateCodes(root.right, code + "1", huffmanCode);
+    }
+}
+
+class BitWriter {
+    private int buffer;
+    private int bitCount;
+    private List<Byte> stream;
+
+    public BitWriter() {
+        this.buffer = 0;
+        this.bitCount = 0;
+        this.stream = new ArrayList<>();
+    }
+
+    public void writeBit(boolean bit) {
+        buffer <<= 1;
+        if (bit) buffer |= 1;
+        bitCount++;
+
+        if (bitCount == 8) {
+            stream.add((byte) buffer);
+            bitCount = 0;
+            buffer = 0;
+        }
+    }
+
+    public List<Byte> flush() {
+        if (bitCount > 0) {
+            buffer <<= (8 - bitCount);
+            stream.add((byte) buffer);
+        }
+        return stream;
+    }
+
+    public static String getBinaryStringFromMemoryStream(List<Byte> stream) {
+        StringBuilder binaryStream = new StringBuilder();
+        for (byte b : stream) {
+            binaryStream.append(String.format("%8s", Integer.toBinaryString(b & 0xFF)).replace(' ', '0'));
+        }
+        return binaryStream.toString();
     }
 }
 
@@ -384,6 +450,7 @@ class arithmetic {
         }
     }
 
+    // Método para calcular las frecuencias de los símbolos
     public static Map<Character, Integer> frequency(String name) {
         Map<Character, Integer> freqMap = new HashMap<>();
         for (char c : name.toCharArray()) {
@@ -392,6 +459,7 @@ class arithmetic {
         return freqMap;
     }
 
+    // Método para calcular las probabilidades de los símbolos
     public static Map<Character, Double> probabilidad(Map<Character, Integer> freqMap, int totalChar) {
         Map<Character, Double> probMap = new HashMap<>();
         for (Map.Entry<Character, Integer> entry : freqMap.entrySet()) {
@@ -400,6 +468,7 @@ class arithmetic {
         return probMap;
     }
 
+    // Método para crear los intervalos de los símbolos basado en las probabilidades
     public static Map<Character, Interval> interval(Map<Character, Double> probMap) {
         Map<Character, Interval> intervalMap = new HashMap<>();
         double cumulative = 0.0;
@@ -416,44 +485,58 @@ class arithmetic {
         return intervalMap;
     }
 
-    public static double compress(String name, Map<Character, Interval> intervalMap) {
+    // Método para comprimir una secuencia usando compresión aritmética
+    public static List<Byte> compress(String name, Map<Character, Interval> intervalMap) {
         double low = 0.0;
         double high = 1.0;
+        double range;
+
+        BitWriter bitWriter = new BitWriter();
 
         for (char symbol : name.toCharArray()) {
             Interval interval = intervalMap.get(symbol);
 
-            double range = high - low;
+            range = high - low;
             high = low + range * interval.high;
             low = low + range * interval.low;
+
+            while (true) {
+                if ((high < 0.5 && low < 0.5) || (high >= 0.5 && low >= 0.5)) {
+                    boolean bit = high >= 0.5;
+                    bitWriter.writeBit(bit);
+
+                    while (bitWriter.flush().size() > 0) {
+                        bitWriter.writeBit(!bit);
+                    }
+
+                    if (bit) {
+                        low = (low - 0.5) * 2;
+                        high = (high - 0.5) * 2;
+                    } else {
+                        low *= 2;
+                        high *= 2;
+                    }
+                } else {
+                    break;
+                }
+            }
         }
 
-        return (low + high) / 2;
+        return bitWriter.flush();
     }
 
-    public static double getCompressedSizeInBytes(String name, Map<Character, Double> probMap) {
-        double compressedBits = 0.0;
-
-        for (char ch : name.toCharArray()) {
-            double probability = probMap.get(ch);
-            double logValue = -Math.log(probability) / Math.log(2);
-            compressedBits += logValue;
-        }
-
-        double compressedSizeInBytes = Math.ceil(compressedBits / 8.0);
-
-        return compressedSizeInBytes;
+    // Método para calcular el tamaño comprimido en bytes
+    public static double getCompressedSizeInBytes(List<Byte> compressedData) {
+        return compressedData.size();
     }
 }
 
-
-public class Main{
-    public static void ReaderCSV(String file, BTree tree){
+public class Main {
+    public static void ReaderCSV(String file, BTree tree) {
         String filePath = file;
 
         try (BufferedReader reader = new BufferedReader(new FileReader(filePath))) {
             String line;
-
 
             while ((line = reader.readLine()) != null) {
 
@@ -466,11 +549,10 @@ public class Main{
                 String operation = line.substring(0, separatorIndex).trim();
                 String jsonData = line.substring(separatorIndex + 1).trim();
 
-
-                try{
+                try {
                     JSONObject jsonObject = new JSONObject(jsonData);
 
-                    switch (operation){
+                    switch (operation) {
                         case "INSERT":
                             tree.insert(jsonObject);
 
@@ -491,7 +573,7 @@ public class Main{
                             System.err.println("Operación desconocida: " + operation);
                     }
 
-                } catch (Exception e){
+                } catch (Exception e) {
 
                 }
             }
@@ -502,8 +584,8 @@ public class Main{
 
     }
 
-    public static int namesize(String name){
-        int size = name.length()*2;
+    public static int namesize(String name) {
+        int size = name.length() * 2;
         return size;
     }
 
@@ -520,11 +602,11 @@ public class Main{
         return totalSum;
     }
 
-    public static int namesizehuffman(String names){
+    public static int namesizehuffman(String names) {
         String name = names;
         Map<Character, Integer> frequency = new HashMap<>();
-        for(char c: name.toCharArray()){
-            frequency.put(c, frequency.getOrDefault(c,0) + 1);
+        for (char c : name.toCharArray()) {
+            frequency.put(c, frequency.getOrDefault(c, 0) + 1);
         }
 
         Huffman Huff = new Huffman();
@@ -550,18 +632,48 @@ public class Main{
         arithmetic arith = new arithmetic();
 
         Map<Character, Integer> freqMap = arith.frequency(name);
-
         Map<Character, Double> probMap = arith.probabilidad(freqMap, name.length());
-
         Map<Character, arithmetic.Interval> intervalMap = arith.interval(probMap);
 
-        double compress = arith.compress(name, intervalMap);
+        List<Byte> compressedData = arith.compress(name, intervalMap);
 
-        double compressedSizeInBytes = arith.getCompressedSizeInBytes(name, probMap);
+        double compressedSizeInBytes = arith.getCompressedSizeInBytes(compressedData);
 
         return (int) compressedSizeInBytes;
     }
+    
+    public static int Equal(int namesize, int sizeHuffman, int sizeArith){
+        int newsizeHuff = sizeHuffman/8;
+        if(namesize == newsizeHuff && namesize == sizeArith){
+            return 1;
+        }
+        return 0;
+    }
 
+    public static int Decompress(int namesize, int sizeHuffman, int sizeArith){
+        int newsizeHuff = sizeHuffman/8;
+
+        if(namesize < newsizeHuff && namesize < sizeArith){
+            return 1;
+        }
+        return 0;
+    }
+
+    public static int Huffman(int namesize, int sizeHuffman, int sizeArith){
+        int newsizeHuff = sizeHuffman/8;
+        if(newsizeHuff < namesize && newsizeHuff < sizeArith){
+            return 1;
+        }
+        return 0;
+    }
+
+    public static int Arithmetic(int namesize, int sizeHuffman, int sizeArith){
+        int newsizeHuff = sizeHuffman/8;
+        if(sizeArith < namesize && sizeArith < newsizeHuff){
+            return 1;
+        }
+        return 0;
+    }
 
     public static void Exit(String file, BTree tree) {
         String filepath = file;
@@ -570,6 +682,10 @@ public class Main{
              BufferedWriter writer = new BufferedWriter(new FileWriter("output.txt", true))) {
 
             String line;
+            int equal = 0;
+            int decompress = 0;
+            int Huff = 0;
+            int arithmetic = 0;
 
             while ((line = reader.readLine()) != null) {
                 int separatorIndex = line.indexOf(';');
@@ -596,11 +712,16 @@ public class Main{
                                 foundBook.getString("quantity"),
                                 namesize(foundBook.getString("name")),
                                 namesizehuffman(foundBook.getString("name")),
-                                namesizearithmetic(foundBook.getString("name"))
-                        );
+                                namesizearithmetic(foundBook.getString("name")));
+                        equal += Equal(namesize(foundBook.getString("name")), namesizehuffman(foundBook.getString("name")), namesizearithmetic(foundBook.getString("name")));
+
+                        decompress += Decompress(namesize(foundBook.getString("name")), namesizehuffman(foundBook.getString("name")), namesizearithmetic(foundBook.getString("name")));
+
+                        Huff +=Huffman(namesize(foundBook.getString("name")), namesizehuffman(foundBook.getString("name")), namesizearithmetic(foundBook.getString("name")));
+
+                        arithmetic += Arithmetic(namesize(foundBook.getString("name")), namesizehuffman(foundBook.getString("name")), namesizearithmetic(foundBook.getString("name")));
                         writer.write(formattedOutput);
                         writer.newLine();
-                    } else {
                     }
 
                 } catch (Exception e) {
@@ -608,23 +729,28 @@ public class Main{
                 }
             }
 
+            writer.write("Equal: " + equal);
+            writer.newLine();
+            writer.write("Decompress: " + decompress);
+            writer.newLine();
+            writer.write("Huffman: " + Huff);
+            writer.newLine();
+            writer.write("Arithmetic: " + arithmetic);
+            writer.newLine();
+
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-
-
-    public static void main(String[] args){
+    public static void main(String[] args) {
         String file = "100Klab01_books.csv";
         String file2 = "100Klab01_search.csv";
         BTree tree = new BTree();
-        //Insertador, actualizando y eliminando libros en el arbol
+        // Insertador, actualizando y eliminando libros en el arbol
         ReaderCSV(file, tree);
-        //Despues de haber insertado, actulizado y eliminado libros en el arbol
+        // Despues de haber insertado, actulizado y eliminado libros en el arbol
         Exit(file2, tree);
-
-
 
     }
 }
