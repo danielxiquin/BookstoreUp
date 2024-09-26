@@ -1,5 +1,4 @@
 package org.example;
-
 import org.json.JSONObject;
 import java.util.HashMap;
 import java.io.*;
@@ -389,78 +388,165 @@ class Huffman {
     }
 }
 
-class arithmetic {
+class ArithmeticCompressionInt {
+    public Map<Character, int[]> probabilities = new HashMap<>();
+    public String source;
 
-    static class Interval {
-        double low;
-        double high;
+    private static final int NUMBER_BITS = 16;
+    private static final int DEFAULT_LOW = 0;
+    private static final int DEFAULT_HIGH = 0xFFFF;
+    private static final int MSD = 0x8000;
+    private static final int SSD = 0x4000;
+    private static final int TOO = 0x3FFF;
 
-        public Interval(double low, double high) {
-            this.low = low;
-            this.high = high;
+    private int scale;
+
+    public ArithmeticCompressionInt(String source) {
+        this.source = source;
+        calculateProbabilities();
+    }
+
+    public ArithmeticCompressionInt(Map<Character, int[]> probabilities, int scale) {
+        this.probabilities.putAll(probabilities);
+        this.scale = scale;
+    }
+
+    private void calculateProbabilities() {
+        Map<Character, Integer> frequencies = new HashMap<>();
+
+        for (char symbol : source.toCharArray()) {
+            frequencies.put(symbol, frequencies.getOrDefault(symbol, 0) + 1);
+        }
+
+        List<Map.Entry<Character, Integer>> sortedFreqs = new ArrayList<>(frequencies.entrySet());
+        sortedFreqs.sort((a, b) -> {
+            int cmp = a.getValue().compareTo(b.getValue());
+            return cmp != 0 ? cmp : Character.compare(a.getKey(), b.getKey());
+        });
+
+        scale = source.length();
+        int low = 0;
+
+        for (Map.Entry<Character, Integer> symbol : sortedFreqs) {
+            int high = low + symbol.getValue();
+            probabilities.put(symbol.getKey(), new int[]{low, high});
+            low = high;
         }
     }
 
-    public static Map<Character, Integer> frequency(String name) {
-        Map<Character, Integer> freqMap = new HashMap<>();
-        for (char c : name.toCharArray()) {
-            freqMap.put(c, freqMap.getOrDefault(c, 0) + 1);
-        }
-        return freqMap;
-    }
+    public String compress(String input) {
+        StringBuilder outputStream = new StringBuilder();
+        int low = DEFAULT_LOW;
+        int high = DEFAULT_HIGH;
+        long underflowBits = 0;
 
-    public static Map<Character, Double> probabilidad(Map<Character, Integer> freqMap, int totalChar) {
-        Map<Character, Double> probMap = new HashMap<>();
-        for (Map.Entry<Character, Integer> entry : freqMap.entrySet()) {
-            probMap.put(entry.getKey(), (double) entry.getValue() / totalChar);
-        }
-        return probMap;
-    }
+        for (char symbol : input.toCharArray()) {
+            long range = (long) (high - low) + 1;
+            high = (int) (low + (range * probabilities.get(symbol)[1]) / scale - 1);
+            low = (int) (low + (range * probabilities.get(symbol)[0]) / scale);
 
-    public static Map<Character, Interval> interval(Map<Character, Double> probMap) {
-        Map<Character, Interval> intervalMap = new HashMap<>();
-        double cumulative = 0.0;
-
-        for (Map.Entry<Character, Double> entry : probMap.entrySet()) {
-            char symbol = entry.getKey();
-            double probability = entry.getValue();
-            double low = cumulative;
-            double high = cumulative + probability;
-            intervalMap.put(symbol, new Interval(low, high));
-            cumulative = high;
-        }
-
-        return intervalMap;
-    }
-
-    public static double compress(String name, Map<Character, Interval> intervalMap) {
-        double low = 0.0;
-        double high = 1.0;
-
-        for (char symbol : name.toCharArray()) {
-            Interval interval = intervalMap.get(symbol);
-
-            double range = high - low;
-            high = low + range * interval.high;
-            low = low + range * interval.low;
+            while (true) {
+                if ((high & MSD) == (low & MSD)) {
+                    boolean bit = (high & MSD) != 0;
+                    outputStream.append(bit ? "1" : "0");
+                    while (underflowBits > 0) {
+                        bit = (high & MSD) == 0;
+                        outputStream.append(bit ? "1" : "0");
+                        underflowBits--;
+                    }
+                } else {
+                    if ((low & SSD) != 0 && (high & SSD) == 0) {
+                        underflowBits++;
+                        low &= TOO;
+                        high |= SSD;
+                    } else {
+                        break;
+                    }
+                }
+                low <<= 1;
+                high <<= 1;
+                high |= 1;
+                low &= 0xFFFF;
+                high &= 0xFFFF;
+            }
         }
 
-        return (low + high) / 2;
-    }
-
-    public static double getCompressedSizeInBytes(String name, Map<Character, Double> probMap) {
-        double compressedBits = 0.0;
-
-        for (char ch : name.toCharArray()) {
-            double probability = probMap.get(ch);
-            double logValue = -Math.log(probability) / Math.log(2);
-            compressedBits += logValue;
+        boolean finalBit = (low & SSD) != 0;
+        outputStream.append(finalBit ? "1" : "0");
+        underflowBits++;
+        while (underflowBits > 0) {
+            boolean bit = (low & SSD) == 0;
+            outputStream.append(bit ? "1" : "0");
+            underflowBits--;
         }
 
-        double compressedSizeInBytes = Math.ceil(compressedBits / 8.0);
+        if (outputStream.length() % 8 != 0) {
+            outputStream.append("0".repeat(8 - outputStream.length() % 8));
+        }
 
-        return compressedSizeInBytes;
+        return outputStream.toString();
     }
+
+    public String decompress(String input, int size) throws RuntimeException {
+        StringBuilder retval = new StringBuilder();
+        int code = 0;
+        int low = DEFAULT_LOW;
+        int high = DEFAULT_HIGH;
+
+        for (int i = 0; i < NUMBER_BITS; i++) {
+            code <<= 1;
+            code |= input.charAt(0) == '1' ? 1 : 0;
+            input = input.substring(1);
+        }
+
+        for (int i = 0; i < size; i++) {
+            long range = (long) (high - low) + 1;
+            int scaledValue = (int) (((long)(code - low + 1) * scale - 1) / range);
+
+            char c = '\0';
+            for (Map.Entry<Character, int[]> symbol : probabilities.entrySet()) {
+                if (scaledValue >= symbol.getValue()[0] && scaledValue < symbol.getValue()[1]) {
+                    c = symbol.getKey();
+                    break;
+                }
+            }
+
+            if (c == '\0') throw new RuntimeException("Decoding Error");
+
+            retval.append(c);
+
+            range = (long) (high - low) + 1;
+            high = (int) (low + (range * probabilities.get(c)[1]) / scale - 1);
+            low = (int) (low + (range * probabilities.get(c)[0]) / scale);
+
+            while (true) {
+                if ((high & MSD) == (low & MSD)) {
+                    // Shift out the most significant bit
+                } else {
+                    if ((low & SSD) == SSD && (high & SSD) == 0) {
+                        code ^= SSD;
+                        low &= TOO;
+                        high |= SSD;
+                    } else {
+                        break;
+                    }
+                }
+                low <<= 1;
+                high <<= 1;
+                high |= 1;
+                code <<= 1;
+                low &= 0xFFFF;
+                high &= 0xFFFF;
+                code &= 0xFFFF;
+                if (input.length() == 0) break;
+                code |= input.charAt(0) == '1' ? 1 : 0;
+                input = input.substring(1);
+            }
+        }
+        return retval.toString();
+    }
+
+
 }
 
 public class Main {
@@ -559,55 +645,64 @@ public class Main {
 
     }
 
-    public static int namesizearithmetic(String names) {
-        String name = names;
-        arithmetic arith = new arithmetic();
 
-        Map<Character, Integer> freqMap = arith.frequency(name);
-
-        Map<Character, Double> probMap = arith.probabilidad(freqMap, name.length());
-
-        Map<Character, arithmetic.Interval> intervalMap = arith.interval(probMap);
-
-        double compress = arith.compress(name, intervalMap);
-
-        double compressedSizeInBytes = arith.getCompressedSizeInBytes(name, probMap);
-
-        return (int) compressedSizeInBytes;
+    public static int namesizearithmetic(String name) {
+        ArithmeticCompressionInt compressor = new ArithmeticCompressionInt(name);
+        var size = compressor.compress(name);
+        int result = (int) (size.length() / 8);
+        return result;
     }
 
+
+
+
     public static int Equal(int namesize, int sizeHuffman, int sizeArith){
-        int newsizeHuff = sizeHuffman/8;
-        if(namesize == newsizeHuff && namesize == sizeArith){
+        double newHuff = (double)sizeHuffman/8;
+        int sizehuff = (int) Math.ceil(newHuff);
+        if(namesize == sizehuff && namesize == sizeArith){
             return 1;
         }
         return 0;
     }
 
     public static int Decompress(int namesize, int sizeHuffman, int sizeArith){
-        int newsizeHuff = sizeHuffman/8;
 
-        if(namesize < newsizeHuff && namesize < sizeArith){
+        double newHuff = (double)sizeHuffman/8;
+        int sizehuff = (int) Math.ceil(newHuff);
+
+        if(namesize < sizehuff && namesize < sizeArith){
             return 1;
         }
         return 0;
     }
 
     public static int Huffman(int namesize, int sizeHuffman, int sizeArith){
-        int newsizeHuff = sizeHuffman/8;
-        if(newsizeHuff < namesize && newsizeHuff < sizeArith){
+        double newHuff = (double)sizeHuffman/8;
+        int sizehuff = (int) Math.ceil(newHuff);
+        if(sizehuff < namesize && sizehuff < sizeArith){
             return 1;
         }
         return 0;
     }
 
     public static int Arithmetic(int namesize, int sizeHuffman, int sizeArith){
-        int newsizeHuff = sizeHuffman/8;
-        if(sizeArith < namesize && sizeArith < newsizeHuff){
+        double newHuff = (double)sizeHuffman/8;
+        int sizehuff = (int) Math.ceil(newHuff);
+        if(sizeArith < namesize && sizeArith < sizehuff){
             return 1;
         }
         return 0;
     }
+
+    public static int Either(int sizeHuffman, int sizeArith){
+        double newHuff = (double)sizeHuffman/8;
+        int sizehuff = (int) Math.ceil(newHuff);
+        if(sizehuff == sizeArith){
+            return 1;
+        }
+        return 0;
+    }
+
 
     public static void Exit(String file, BTree tree) {
         String filepath = file;
@@ -620,6 +715,7 @@ public class Main {
             int decompress = 0;
             int Huff = 0;
             int arithmetic = 0;
+            int either = 0;
 
             while ((line = reader.readLine()) != null) {
                 int separatorIndex = line.indexOf(';');
@@ -654,6 +750,8 @@ public class Main {
                         Huff +=Huffman(namesize(foundBook.getString("name")), namesizehuffman(foundBook.getString("name")), namesizearithmetic(foundBook.getString("name")));
 
                         arithmetic += Arithmetic(namesize(foundBook.getString("name")), namesizehuffman(foundBook.getString("name")), namesizearithmetic(foundBook.getString("name")));
+
+                        either += Either(namesizehuffman(foundBook.getString("name")), namesizearithmetic(foundBook.getString("name")));
                         writer.write(formattedOutput);
                         writer.newLine();
                     }
@@ -671,6 +769,8 @@ public class Main {
             writer.newLine();
             writer.write("Arithmetic: " + arithmetic);
             writer.newLine();
+            writer.write("Either: " + either);
+            writer.newLine();
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -678,8 +778,8 @@ public class Main {
     }
 
     public static void main(String[] args) {
-        String file = "Ejemplo_lab01_books.csv";
-        String file2 = "Ejemplo_lab01_search.csv";
+        String file = "lab01_books.csv";
+        String file2 = "lab01_search.csv";
         BTree tree = new BTree();
         // Insertador, actualizando y eliminando libros en el arbol
         ReaderCSV(file, tree);
